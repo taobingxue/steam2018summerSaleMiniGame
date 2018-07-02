@@ -8,6 +8,8 @@ MAX_TRY = 5
 GAME_TIME = 120
 LEVEL_SCORE = {1:585, 2:1170, 3:2340}
 LANGUAGE = 'schinese'
+RESELECT_GAP = 20
+
 def res_to_dict(res):
     return json.loads(res.text)["response"]
 
@@ -28,29 +30,31 @@ def read_token():
 def play():
     planets_info = get_planets_info()
     player_info = get_player_info()
-    if ('active_planet' not in player_info):
-        join_planet(list(planets_info.keys())[0])
-        player_info = get_player_info()
-    current_planet = player_info['active_planet']
-    print('Currntly on planet ' + current_planet + ': ' + planets_info[current_planet]['state']['name'])
+    target_planet = 'null'
+    if ('active_planet' in player_info):
+        target_planet = player_info['active_planet']
+        print('Target planet %s: %s' % (target_planet, planets_info[target_planet]['state']['name']))
+        leave_planet(target_planet)
     
     while True:
-        while True:
-            valid_zones = get_valid_planet_zones(player_info['active_planet'])
+        boss_id = find_boss(planets_info)
+        if (boss_id in planets_info):
+            boss_fight(planets_info[boss_id])
+            planets_info = get_planets_info()
+        
+        tmp_planet = select_planet(list(planets_info.keys()), target_planet)
+        join_planet(tmp_planet)
+        print('Currntly on planet ' + tmp_planet + ': ' + planets_info[tmp_planet]['state']['name'])
+        for i in range(RESELECT_GAP // 2):
+            valid_zones = get_valid_planet_zones(tmp_planet)
             if (len(valid_zones) < 2):
                 break
-            join_zone(valid_zones[0]['zone_position'])
-            count_down(GAME_TIME)
-            report_score(LEVEL_SCORE[valid_zones[0]['difficulty']])
-        leave_game(current_planet)
-        
-        planets_info = get_planets_info()
-        p_keys = list(planets_info.keys())
-        join_planet(p_keys[0] if p_keys[0] != current_planet else p_keys[1])
-        player_info = get_player_info()
-        current_planet = player_info['active_planet']
-        print('Currntly on planet ' + current_planet + ': ' + planets_info[current_planet]['state']['name'])
+            fight_zone(valid_zones[0])
+        leave_planet(tmp_planet)
+        planets_info = get_planets_info()     
+            
 
+''' basic info '''
 def get_player_info():
     print('Get Player Info... ')
     params = {"access_token" : token}
@@ -81,13 +85,47 @@ def join_planet(planet_id):
         print('Fail To Join Planet... ')
         sys.exit()
 
+def leave_planet(planet_id):
+    print('Leave Planet ' + planet_id)
+    params = {
+        "access_token" : token,
+        "gameid" : planet_id
+    }
+    res = requests.post(r'https://community.steam-api.com/IMiniGameService/LeaveGame/v0001/', data = params)
+    if (res.status_code != 200):
+        print('Fail To Leave Planet... ')
+        sys.exit()
+
+def select_planet(planet_ids, target_planet):
+    planet_ids.sort(key = lambda x: 0 - count_difficulties(x))
+    if (count_difficulties(planet_ids[0]) > 0 or target_planet not in planet_ids):
+        return planet_ids[0]
+    else:
+        return target_planet
+
+def count_difficulties(planet_id):
+    valid_zones = get_valid_planet_zones(planet_id)
+    c3 = len([x for x in valid_zones if x['difficulty'] == 3])
+    c2 = len([x for x in valid_zones if x['difficulty'] == 2])
+    return c3 * 100 + c2
+
+''' Fight on planet '''
+''' get all valid zones in current planet with decreasing difficulty '''
 def get_valid_planet_zones(planet_id):
     print('Get Planet Info of ' + planet_id + '...')
     res = requests.get(r'https://community.steam-api.com/ITerritoryControlMinigameService/GetPlanet/v0001/?id=' + planet_id + '&language=schinese')
-    return [zone for zone in res_to_dict(res)['planets'][0]['zones'] if not zone['captured']]
+    zones = [zone for zone in res_to_dict(res)['planets'][0]['zones'] if not zone['captured']]
+    zones.sort(key = lambda x: 0 - x['difficulty'])
+    return zones
+
+def fight_zone(zone):
+    print('Start a game in zone: %s(difficulty: %d)' % (zone['zone_position'], zone['difficulty']))
+    join_zone(zone['zone_position'])
+    count_down(GAME_TIME)
+    report_score(LEVEL_SCORE[zone['difficulty']])
 
 def join_zone(zone_position):
-    print('Start game at zone: ', zone_position)
+    print('Join Zone: ', zone_position)
     params = {
         "access_token" : token,
         "zone_position" : zone_position
@@ -98,9 +136,10 @@ def join_zone(zone_position):
         sys.exit()
 
 def count_down(t):
-    for i in range(t, 0, -1):
-        print(u'fighting... %ds left...' % i)
-        time.sleep(1)
+    for i in range(t, 0, -5):
+        print(r'fighting... %3ds left...  ' % i, end = '')
+        sys.stdout.flush()
+        time.sleep(5)
 
 def report_score(score):
     print('Report score: ', score)
@@ -113,7 +152,11 @@ def report_score(score):
     if (res.status_code != 200):
         print('Fail To Report Score... ')
         sys.exit()
-    
+
+''' boss '''
+def find_boss(planets_info):
+    return '-1'
+
 token = ini_token()
 play()
 
