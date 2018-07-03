@@ -139,10 +139,11 @@ def join_zone(zone_position):
         sys.exit()
 
 def count_down(t):
-    for i in range(t, 0, -5):
-        print(r'fighting... %3ds left...  ' % i, end = '')
+    for i in range(t, 0, -1):
+        print('fighting: %3ds left...  \r' % i, end = '')
         sys.stdout.flush()
-        time.sleep(5)
+        time.sleep(1)
+    print('fighting:   0s left...  ')
 
 def report_score(score):
     print('Report score: ', score)
