@@ -2,13 +2,13 @@
 # -*- coding: utf-8 -*- 
 ''' install requests: python -m pip install requests '''
 import json, requests
-import os, re, sys, time
+import os, random, re, sys, time
 
 MAX_TRY = 5
 GAME_TIME = 120
-LEVEL_SCORE = {1:585, 2:1170, 3:2340}
+LEVEL_SCORE = {1:585, 2:1170, 3:2360}
 LANGUAGE = 'schinese'
-RESELECT_GAP = 20
+RESELECT_GAP = 10
 
 def res_to_dict(res):
     return json.loads(res.text)["response"]
@@ -37,7 +37,7 @@ def play():
         leave_planet(target_planet)
     
     while True:
-        boss_id = find_boss(planets_info)
+        boss_id = find_boss(list(planets_info.values()))
         if (boss_id in planets_info):
             boss_fight(planets_info[boss_id])
             planets_info = get_planets_info()
@@ -104,17 +104,20 @@ def select_planet(planet_ids, target_planet):
         return target_planet
 
 def count_difficulties(planet_id):
-    valid_zones = get_valid_planet_zones(planet_id)
+    valid_zones = get_planet_info(planet_id)
     c3 = len([x for x in valid_zones if x['difficulty'] == 3])
     c2 = len([x for x in valid_zones if x['difficulty'] == 2])
     return c3 * 100 + c2
 
 ''' Fight on planet '''
-''' get all valid zones in current planet with decreasing difficulty '''
-def get_valid_planet_zones(planet_id):
+def get_planet_info(planet_id):
     print('Get Planet Info of ' + planet_id + '...')
     res = requests.get(r'https://community.steam-api.com/ITerritoryControlMinigameService/GetPlanet/v0001/?id=' + planet_id + '&language=schinese')
-    zones = [zone for zone in res_to_dict(res)['planets'][0]['zones'] if not zone['captured']]
+    return [zone for zone in res_to_dict(res)['planets'][0]['zones'] if not zone['captured']]
+
+''' get all valid zones in current planet with decreasing difficulty '''
+def get_valid_planet_zones(planet_id):
+    zones = get_planet_info(planet_id)
     zones.sort(key = lambda x: 0 - x['difficulty'])
     return zones
 
@@ -154,9 +157,56 @@ def report_score(score):
         sys.exit()
 
 ''' boss '''
-def find_boss(planets_info):
-    return '-1'
+def find_boss(planets):
+    print('find_boss: ')
+    boss_planets = [planet['id'] for planet in planets if 'boss_zone_position' in planet['state']]
+    print('boss_planet: ', boss_planets)
+    return '-1' if not boss_planets else boss_planets[0]
+
+def boss_fight(boss_planet):
+    print('boss fight: ', boss_planet)
+    join_planet(boss_planet['id'])
+    boss_position = boss_planet['state']['boss_zone_position']
+    
+    while ([x for x in get_planet_info(boss_planet['id']) if (x['zone_position'] == boss_position) and x['boss_active']]):
+        if not (join_boss_zone(boss_position)):
+            break
+        damage_boss()
+    leave_planet(boss_planet['id'])
+
+def join_boss_zone(zone_id):
+    print('Join Boss Zone: ', zone_id)
+    params = {
+        "access_token" : token,
+        "zone_position" : zone_id
+    }
+    res = requests.post(r'https://community.steam-api.com/ITerritoryControlMinigameService/JoinBossZone/v0001/', data = params)
+    if (res.status_code != 200):
+        print('Fail To Join Boss Zone... ')
+        return False
+    return True
+
+def damage_boss():
+    hp = 1
+    while hp > 0:
+        time.sleep(5)
+        params = {
+            "access_token" : token,
+            "use_heal_ability" : 0,
+            "damage_to_boss" : random.randint(22, 56),
+            "damage_taken" : 0 if (random.randint(1, 7) > 1) else 5
+        }
+        res = requests.post(r'https://community.steam-api.com/ITerritoryControlMinigameService/ReportBossDamage/v0001/', data = params)
+        if (res.status_code != 200):
+            print('Fail To Report Boss Damage... ')
+            return
+        ''' this happened once, unreproducable, so put a check here to avoid possible crash '''
+        if 'boss_status' not in res_to_dict(res):
+            return
+        boss = res_to_dict(res)['boss_status']
+        hp = boss['boss_hp']
+        print('Boss %.2f%% Left... ' % (hp / boss['boss_max_hp']), end = '')
+        sys.stdout.flush()
 
 token = ini_token()
 play()
-
