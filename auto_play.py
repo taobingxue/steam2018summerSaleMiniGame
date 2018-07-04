@@ -34,25 +34,30 @@ def play():
     if ('active_planet' in player_info):
         target_planet = player_info['active_planet']
         print('Target planet %s: %s' % (target_planet, planets_info[target_planet]['state']['name']))
-        leave_planet(target_planet)
+        leave_planet()
     
     while True:
-        boss_id = find_boss(list(planets_info.values()))
-        if (boss_id in planets_info):
-            boss_fight(planets_info[boss_id])
-            planets_info = get_planets_info()
-        
-        tmp_planet = select_planet(list(planets_info.keys()), target_planet)
-        join_planet(tmp_planet)
-        print('Currntly on planet ' + tmp_planet + ': ' + planets_info[tmp_planet]['state']['name'])
-        for i in range(RESELECT_GAP // 2):
-            valid_zones = get_valid_planet_zones(tmp_planet)
-            if (len(valid_zones) < 2):
-                break
-            fight_zone(valid_zones[0])
-        leave_planet(tmp_planet)
-        planets_info = get_planets_info()     
+        try:
+            boss_id = find_boss(list(planets_info.values()))
+            if (boss_id in planets_info):
+                boss_fight(planets_info[boss_id])
+                planets_info = get_planets_info()
             
+            tmp_planet = select_planet(list(planets_info.keys()), target_planet)
+            join_planet(tmp_planet)
+            print('Currntly on planet ' + tmp_planet + ': ' + planets_info[tmp_planet]['state']['name'])
+            for i in range(RESELECT_GAP // 2):
+                valid_zones = get_valid_planet_zones(tmp_planet)
+                if (len(valid_zones) < 2):
+                    break
+                fight_zone(valid_zones[0])
+            leave_planet()
+        except SystemExit:
+            print('Unexpected error, start a new cycle.')
+        except KeyError:
+            print('Unexpected error, start a new cycle.')
+        planets_info = get_planets_info()     
+
 
 ''' basic info '''
 def get_player_info():
@@ -85,7 +90,15 @@ def join_planet(planet_id):
         print('Fail To Join Planet... ')
         sys.exit()
 
-def leave_planet(planet_id):
+# Leave current planet if there is one.
+def leave_planet():
+    player_info = get_player_info()
+    if ('active_planet' in player_info):
+        planet_id = player_info['active_planet']
+    else:
+        print('Try to leave planet but not in any, might be during boss delay.')
+        return
+    
     print('Leave Planet ' + planet_id)
     params = {
         "access_token" : token,
@@ -115,7 +128,7 @@ def get_planet_info(planet_id):
     res = requests.get(r'https://community.steam-api.com/ITerritoryControlMinigameService/GetPlanet/v0001/?id=' + planet_id + '&language=schinese')
     return [zone for zone in res_to_dict(res)['planets'][0]['zones'] if not zone['captured']]
 
-''' get all valid zones in current planet with decreasing difficulty '''
+# get all valid zones in current planet with decreasing difficulty
 def get_valid_planet_zones(planet_id):
     zones = get_planet_info(planet_id)
     zones.sort(key = lambda x: 0 - x['difficulty'])
@@ -173,7 +186,7 @@ def boss_fight(boss_planet):
         if not (join_boss_zone(boss_position)):
             break
         damage_boss()
-    leave_planet(boss_planet['id'])
+    leave_planet()
 
 def join_boss_zone(zone_id):
     print('Join Boss Zone: ', zone_id)
@@ -201,7 +214,7 @@ def damage_boss():
         if (res.status_code != 200):
             print('Fail To Report Boss Damage... ')
             return
-        ''' this happened once, unreproducable, so put a check here to avoid possible crash '''
+        # this happened once, unreproducable, so put a check here to avoid possible crash
         if 'boss_status' not in res_to_dict(res):
             return
         boss = res_to_dict(res)['boss_status']
