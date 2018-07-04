@@ -219,7 +219,7 @@ def damage_boss():
             return
         boss = res_to_dict(res)['boss_status']
         hp = boss['boss_hp']
-        print('Boss %.2f%% Left... ' % (hp / boss['boss_max_hp']), end = '')
+        print('Boss %.2f%% Left... ' % (hp / boss['boss_max_hp'] * 100), end = '')
         sys.stdout.flush()
 
 token = ini_token()
